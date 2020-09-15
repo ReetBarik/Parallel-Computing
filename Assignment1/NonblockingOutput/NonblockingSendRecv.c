@@ -35,8 +35,10 @@ int main(int argc,char *argv[])
 			
 			char y[size];
 			MPI_Status status;
+			MPI_Request request;
 			gettimeofday(&t1, NULL);
-			MPI_Recv(&y, size, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+			MPI_Irecv(&y, size, MPI_CHAR, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &request);
+			MPI_Wait(&request, &status);
 			gettimeofday(&t2, NULL);
 			int tRecv = (t2.tv_sec - t1.tv_sec) * 1000000 + (t2.tv_usec - t1.tv_usec);
 
