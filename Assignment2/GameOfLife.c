@@ -108,10 +108,161 @@ void DisplayGoL(int rank, int n, int p, int *subMatrix){
 	}
 }
 
+
+
+
+int DetermineState(int pos, int *next, int *previous, int *subMatrix, int n, int p){
+
+	int N, S, E, W, NE, NW, SE, SW, sum, state;
+	if(pos < n){																	// at the top. Needs to use previous
+		if (pos == 0){
+			N = previous[pos];
+			NW = previous[n - 1];
+			NE = previous[pos + 1];
+			S = subMatrix[pos + n];
+			SW = subMatrix[pos + n + n - 1];
+			SE = subMatrix[pos + n + 1];
+			E = subMatrix[pos + 1];
+			W = subMatrix[n - 1];
+		}
+		else if (pos == n - 1){
+			N = previous[pos];
+			NW = previous[pos - 1];
+			NE = previous[0];
+			S = subMatrix[pos + n];
+			SW = subMatrix[pos + n - 1];
+			SE = subMatrix[pos + 1];
+			E = subMatrix[0];
+			W = subMatrix[pos - 1];
+		}
+		else {
+			N = previous[pos];
+			NW = previous[pos - 1];
+			NE = previous[pos + 1];
+			S = subMatrix[pos + n];
+			SW = subMatrix[pos + n - 1];
+			SE = subMatrix[pos + n + 1];
+			E = subMatrix[pos + 1];
+			W = subMatrix[pos - 1];
+		}
+	}
+	else if (pos > (n * n / p) - 1 - n){											// at the bottom. Needs to use next
+		if (pos % n == 0){
+			N = subMatrix[pos - n];
+			NW = subMatrix[pos - 1];
+			NE = subMatrix[pos - n + 1];
+			S = next[0];
+			SW = next[n - 1];
+			SE = next[1];
+			E = subMatrix[pos + 1];
+			W = subMatrix[pos + n - 1];
+		}
+		else if (pos % n == n - 1) {
+			N = subMatrix[pos - n];
+			NW = subMatrix[pos - n - 1];
+			NE = subMatrix[pos - n - n + 1];
+			S = next[n - 1];
+			SW = next[n - 1 - 1];
+			SE = next[0];
+			E = subMatrix[pos - n + 1];
+			W = subMatrix[pos - 1];
+		}
+		else {
+			N = subMatrix[pos - n];
+			NW = subMatrix[pos - n - 1];
+			NE = subMatrix[pos - n + 1];
+			S = next[pos % n];
+			SW = next[pos % n - 1];
+			SE = next[pos % n + 1];
+			E = subMatrix[pos + 1];
+			W = subMatrix[pos - 1];
+		}
+	}
+	else {																			// in the middle
+
+		if (pos % n == 0){ 															// on the left edge
+			N = subMatrix[pos - n];
+			NW = subMatrix[pos - 1];
+			NE = subMatrix[pos - n + 1];
+			S = subMatrix[pos + n];
+			SW = subMatrix[pos + n + n - 1];
+			SE = subMatrix[pos + n + 1];
+			E = subMatrix[pos + 1];
+			W = subMatrix[pos + n - 1];
+		}
+		else if (pos % n == n - 1){													// on the right edge
+			N = subMatrix[pos - n];
+			NW = subMatrix[pos - n - 1];
+			NE = subMatrix[pos - n - n + 1];
+			S = subMatrix[pos + n];
+			SW = subMatrix[pos + n - 1];
+			SE = subMatrix[pos + 1];
+			E = subMatrix[pos - n + 1];
+			W = subMatrix[pos - 1];
+		}
+		else {																		// in the middle
+			N = subMatrix[pos - n];
+			NW = subMatrix[pos - n - 1];
+			NE = subMatrix[pos - n + 1];
+			S = subMatrix[pos + n];
+			SW = subMatrix[pos + n - 1];
+			SE = subMatrix[pos + n + 1];
+			E = subMatrix[pos + 1];
+			W = subMatrix[pos - 1];
+		}
+	}
+
+	sum = N + NW + NE + S + SW + SE + E + W;
+
+	if (sum > -1 && sum < 3)
+		state = 0;
+	if (sum > 2  && sum < 6)
+		state = 1;
+	if (sum > 5 && sum < 9)
+		state = 0;
+
+	return state;
+}
+
+
+void Simulate(int rank, int n, int p, int *subMatrix){
+
+	MPI_Status status;
+
+	int *previous = (int *)malloc(n * sizeof(int));                                       // place to store the last row from previous rank
+	int *next = (int *)malloc(n * sizeof(int));                                       // place to store the first row from next rank
+	int *top = (int *)malloc(n * sizeof(int));                                       // buffer to store current subMatrix's top row
+	int *bottom = (int *)malloc(n * sizeof(int));                                       // buffer to store current subMatrix's bottom row
+
+	for (int i = 0; i < n; i++){
+		top[i] = subMatrix[i];														// copy the top row to buffer
+		bottom[i] = subMatrix[((n * n) / p) - n  + i];								// copy the bottom row to buffer
+	}
+
+	gettimeofday(&t1, NULL);
+    MPI_Send(top, n, MPI_INT, (rank - 1 + p) % p, 0, MPI_COMM_WORLD);	                       // send top row to previous rank
+    MPI_Send(bottom, n, MPI_INT, (rank + 1) % p, 0, MPI_COMM_WORLD);	                       // send bottom row to next rank
+
+    MPI_Recv(next, n, MPI_INT,(rank + 1) % p, MPI_ANY_TAG, MPI_COMM_WORLD, &status);             // recv next rank's first row
+    MPI_Recv(previous, n, MPI_INT,(rank - 1 + p) % p, MPI_ANY_TAG, MPI_COMM_WORLD, &status);	// recv previous rank's last row
+    gettimeofday(&t2, NULL);
+
+    // TODO: stuff with t1 and t2 later
+
+    for (int i = 0; i < n * n / p; i++){
+    	subMatrix[i] = DetermineState(i, next, previous, subMatrix, n, p);
+    }
+
+    free(previous);
+    free(next);
+    free(top);
+    free(bottom);
+
+}
+
 int main(int argc, char *argv[]){
 
 	int rank, p, n, G;
-	struct timeval t1, t2;
 	MPI_Status status;
 
 
@@ -126,15 +277,26 @@ int main(int argc, char *argv[]){
     G = atoi(argv[2]);          		                                                  // #generations to simulate
 
     assert(n % p == 0);                                                                       // making sure that n is divisible by p
+    assert(n > p);																			// making sure n/p > 1
+
 
     int *subMatrix = (int*)malloc(sizeof(int) * n * ((int) n / p)); 								      // allocating memeory for the local sub matrix
     
 
     GenerateInitialGoL(rank, n, p, subMatrix);												  // init
 
-    // TODO: Conditional display later
-    DisplayGoL(rank, n, p, subMatrix);                                                        // Concatenate all subMatrix at rank 0 and display
+    for (int i = 0; i < G; i++){
+    	gettimeofday(&t1, NULL);
+    	
+    	MPI_Barrier(MPI_COMM_WORLD);	// block
+		gettimeofday(&t2, NULL);
+		Simulate(rank, n, p, subMatrix);
+		// TODO: Conditional display later
+    	DisplayGoL(rank, n, p, subMatrix);                                                        // Concatenate all subMatrix at rank 0 and display
 
+    }
+
+    
     MPI_Finalize();
     return 0;
 }
