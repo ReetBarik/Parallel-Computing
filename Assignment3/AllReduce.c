@@ -11,22 +11,27 @@ int elapsedTime(struct timeval t1, struct timeval t2) {
 	return (t2.tv_sec-t1.tv_sec)*1000000 + (t2.tv_usec-t1.tv_usec);
 }
 
+int op(int a, int b, int choice){
+	if(choice == 1)
+		return (a + b);
+	if(choice == 2)
+		return (a > b) ? a : b;
+}
+
 int* GenerateArray(int size, int rank){
 	
 	srand(rank);
 	int *subArray = (int *)malloc(sizeof(int) * size);
 
     for (int i = 0; i < size; i++)
-    	subArray[i] = (int)(rand() % 1000);
+    	subArray[i] = 1; //(int)(rand() % 1000);
 
     return subArray;
 }
 
-
-int MPILibraryAllReduce(int rank, int size, int *subArray, int choice){
-
+int computeLocal(int size, int *subArray, int choice){
+	
 	int local_output = subArray[0];
-	int global_output = 0; 
 
 	for (int i = 1; i < size; i++){
 		if(choice == 1)
@@ -34,6 +39,38 @@ int MPILibraryAllReduce(int rank, int size, int *subArray, int choice){
 		if(choice == 2)
 			local_output = (local_output > subArray[i]) ? local_output : subArray[i];
 	}
+
+	return local_output;
+}
+
+
+int MyAllReduce(int rank, int size, int *subArray, int choice, int p){
+
+	int global_output, partner, k = 1;
+	MPI_Status status;
+
+	int local_output = computeLocal(size, subArray, choice);
+
+	for (int t = 0; t < ceil(log2(p)); t++) {
+		partner = rank ^ k;
+		k << 1;
+		MPI_Sendrecv(&local_output, 1, MPI_INT, partner, 0, &global_output, 1, MPI_INT, partner, 0, MPI_COMM_WORLD, &status);
+		local_output = op(global_output, local_output, choice);
+	}
+
+	global_output = local_output;
+	printf("Rank: %d, Global: %d\n", rank, global_output);
+	return global_output;
+}
+
+
+
+int MPILibraryAllReduce(int rank, int size, int *subArray, int choice){
+
+	
+	int global_output = 0; 
+
+	int local_output = computeLocal(size, subArray, choice);
 
 	if(choice == 1)
 		MPI_Allreduce(&local_output, &global_output, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
@@ -43,6 +80,8 @@ int MPILibraryAllReduce(int rank, int size, int *subArray, int choice){
 	printf("Rank: %d, Global: %d\n", rank, global_output);
 	return global_output;
 }
+
+
 
 int main(int argc, char** argv) {
     int rank, p, i, global_output;
@@ -67,6 +106,9 @@ int main(int argc, char** argv) {
     int *subArray = GenerateArray(size, rank);
     
     gettimeofday(&t1, NULL);
+
+    if (func == 1)
+    	global_output = MyAllReduce(rank, size, subArray, op, p);
     if (func == 3)
     	global_output = MPILibraryAllReduce(rank, size, subArray, op);
 
