@@ -24,7 +24,7 @@ int* GenerateArray(int size, int rank){
 	int *subArray = (int *)malloc(sizeof(int) * size);
 
     for (int i = 0; i < size; i++)
-    	subArray[i] = 1; //(int)(rand() % 1000);
+    	subArray[i] =(int)(rand() % 1000);
 
     return subArray;
 }
@@ -52,7 +52,7 @@ int MyAllReduce(int rank, int size, int *subArray, int choice, int p){
 	int local_output = computeLocal(size, subArray, choice);
 
 	if (p == 1) {
-		printf("Rank: %d, Global: %d\n", rank, local_output);
+		// printf("Rank: %d, Global: %d\n", rank, local_output);
 		return local_output;
 	}
 	else 
@@ -66,7 +66,7 @@ int MyAllReduce(int rank, int size, int *subArray, int choice, int p){
 		}
 
 		global_output = local_output;
-		printf("Rank: %d, Global: %d\n", rank, global_output);
+		// printf("Rank: %d, Global: %d\n", rank, global_output);
 		return global_output;
 	}
 	
@@ -81,7 +81,7 @@ int NaiveAllReduce(int rank, int size, int *subArray, int choice, int p){
 	int local_output = computeLocal(size, subArray, choice);
 
 	if (p == 1) {
-		printf("Rank: %d, Global: %d\n", rank, local_output);
+		// printf("Rank: %d, Global: %d\n", rank, local_output);
 		return local_output;
 	}
 	else 
@@ -109,7 +109,7 @@ int NaiveAllReduce(int rank, int size, int *subArray, int choice, int p){
         }
 
         global_output = local_output;
-        printf("Rank: %d, Global: %d\n", rank, global_output);
+        // printf("Rank: %d, Global: %d\n", rank, global_output);
 		return global_output;
 	}
 
@@ -125,7 +125,7 @@ int MPILibraryAllReduce(int rank, int size, int *subArray, int choice, int p){
 	int local_output = computeLocal(size, subArray, choice);
 
 	if (p == 1) {
-		printf("Rank: %d, Global: %d\n", rank, local_output);
+		// printf("Rank: %d, Global: %d\n", rank, local_output);
 		return local_output;
 	}
 	else 
@@ -135,7 +135,7 @@ int MPILibraryAllReduce(int rank, int size, int *subArray, int choice, int p){
 		if(choice == 2)
 			MPI_Allreduce(&local_output, &global_output, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
 
-		printf("Rank: %d, Global: %d\n", rank, global_output);
+		// printf("Rank: %d, Global: %d\n", rank, global_output);
 		return global_output;
 	}
 }
@@ -143,7 +143,7 @@ int MPILibraryAllReduce(int rank, int size, int *subArray, int choice, int p){
 
 
 int main(int argc, char** argv) {
-    int rank, p, i, global_output;
+    int rank, p, i, global_output, time;
     struct timeval t1, t2;
 
 
@@ -174,6 +174,39 @@ int main(int argc, char** argv) {
     	global_output = MPILibraryAllReduce(rank, size, subArray, op, p);
 
     gettimeofday(&t2, NULL);
+
+    time = elapsedTime(t1, t2);
+
+    int *times;
+    if (rank == 0)
+    	times = (int *)malloc(p * sizeof(int)); 
+
+    MPI_Gather(&time, 1, MPI_INT, times, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (rank == 0){
+    	int max = time;
+    	for (i = 0; i < p - 1; i++){
+    		if (times[i] > max)
+    			max = times[i];
+    	}
+
+	    printf("Timing Statistics:\n");
+	    printf("Size of Array: %d\n", n);
+	    printf("Number of processes: %d\n", p);
+	    if (op == 1)
+	    	printf("Binary Associative Operator: ADD\n");
+	    if (op == 2)
+	    	printf("Binary Associative Operator: MAX\n");
+	    if (func == 1)
+	    	printf("Function: MyAllReduce\n");
+	    if (func == 2)
+	    	printf("Function: NaiveAllReduce\n");
+	    if (func == 3)
+	    	printf("Function: MPILibraryAllReduce\n");
+	    printf("Total runtime (in microseconds): %d\n", max);
+
+	    free(times);
+	}
 
     free(subArray);
 
