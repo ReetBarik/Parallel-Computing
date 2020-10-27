@@ -7,18 +7,18 @@
 #include <string.h>
 #include <sys/time.h>
 
-int elapsedTime(struct timeval t1, struct timeval t2) {
+int elapsedTime(struct timeval t1, struct timeval t2) {													// Helper function to calculate time taken in Microseconds
 	return (t2.tv_sec-t1.tv_sec)*1000000 + (t2.tv_usec-t1.tv_usec);
 }
 
-int op(int a, int b, int choice){
+int op(int a, int b, int choice){																		// Helper function to perform the operation of choice in MyAllReduce
 	if(choice == 1)
 		return (a + b);
 	if(choice == 2)
 		return (a > b) ? a : b;
 }
 
-int* GenerateArray(int size, int rank){
+int* GenerateArray(int size, int rank){																	// Generate an array of random numbers < 1000 of size 'size'
 	
 	srand(rank);
 	int *subArray = (int *)malloc(sizeof(int) * size);
@@ -29,7 +29,7 @@ int* GenerateArray(int size, int rank){
     return subArray;
 }
 
-int computeLocal(int size, int *subArray, int choice){
+int computeLocal(int size, int *subArray, int choice){													// Helper function to calculate partial output of the SubArray
 	
 	int local_output = subArray[0];
 
@@ -51,22 +51,22 @@ int MyAllReduce(int rank, int size, int *subArray, int choice, int p){
 
 	int local_output = computeLocal(size, subArray, choice);
 
-	if (p == 1) {
+	if (p == 1) {																						// Local sum == Global Sum
 		// printf("Rank: %d, Global: %d\n", rank, local_output);
 		return local_output;
 	}
 	else 
 	{
 
-		for (int t = 0; t < ceil(log2(p)); t++) {
-			partner = rank ^ k;
-			k << 1;
-			MPI_Sendrecv(&local_output, 1, MPI_INT, partner, 0, &global_output, 1, MPI_INT, partner, 0, MPI_COMM_WORLD, &status);
-			local_output = op(global_output, local_output, choice);
+		for (int t = 0; t < ceil(log2(p)); t++) {														// iterate through log2(p) steps
+			partner = rank ^ k;																			// XOR
+			k << 1;																						// bitshift 
+			MPI_Sendrecv(&local_output, 1, MPI_INT, partner, 0, &global_output, 1, MPI_INT, partner, 0, MPI_COMM_WORLD, &status);    // exchange with partner process
+			local_output = op(global_output, local_output, choice);										// compute local sum for that time step
 		}
 
-		global_output = local_output;
-		// printf("Rank: %d, Global: %d\n", rank, global_output);
+		global_output = local_output;																	// Global Sum
+		// printf("Rank: %d, Global: %d\n", rank, global_output);										// For testing AllReduce indeed does the 'All' part and doesn't just do reduce
 		return global_output;
 	}
 	
@@ -80,36 +80,36 @@ int NaiveAllReduce(int rank, int size, int *subArray, int choice, int p){
 
 	int local_output = computeLocal(size, subArray, choice);
 
-	if (p == 1) {
+	if (p == 1) {																						// Local sum == Global Sum
 		// printf("Rank: %d, Global: %d\n", rank, local_output);
 		return local_output;
 	}
 	else 
 	{
         if (rank == 0)
-        	MPI_Send(&local_output, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+        	MPI_Send(&local_output, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);									// Only send if you are rank 0
         else {
-        	MPI_Recv(&recv, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, &status);
-        	local_output += recv;
+        	MPI_Recv(&recv, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD, &status);							// recv from rank - 1
+        	local_output += recv;																		// Compute local partial sum
         	if (rank < p - 1)
-        		MPI_Send(&local_output, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);
+        		MPI_Send(&local_output, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD);						// send to rank + 1. Do nothing if you are rank == p - 1
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);																	// All processes wait till the global sum is computed in rank p - 1
 
         if (rank == p - 1)
-        	MPI_Send(&local_output, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD);
+        	MPI_Send(&local_output, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD);							// Send to rank - 1 if you are rank p - 1
         else {
         	if (rank == 0)
-        		MPI_Recv(&local_output, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, &status);
+        		MPI_Recv(&local_output, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, &status);				// Only recv if you are rank 0
         	else {
-	        	MPI_Recv(&local_output, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, &status);
+	        	MPI_Recv(&local_output, 1, MPI_INT, rank + 1, 0, MPI_COMM_WORLD, &status);				// recv and forward if you are anything in between 0 and p - 1
 	        	MPI_Send(&local_output, 1, MPI_INT, rank - 1, 0, MPI_COMM_WORLD);
 	        }
         }
 
         global_output = local_output;
-        // printf("Rank: %d, Global: %d\n", rank, global_output);
+        // printf("Rank: %d, Global: %d\n", rank, global_output);										// For testing AllReduce indeed does the 'All' part and doesn't just do reduce
 		return global_output;
 	}
 
@@ -118,26 +118,18 @@ int NaiveAllReduce(int rank, int size, int *subArray, int choice, int p){
 
 
 int MPILibraryAllReduce(int rank, int size, int *subArray, int choice, int p){
-
 	
 	int global_output = 0; 
 
 	int local_output = computeLocal(size, subArray, choice);
 
-	if (p == 1) {
-		// printf("Rank: %d, Global: %d\n", rank, local_output);
-		return local_output;
-	}
-	else 
-	{
-		if(choice == 1)
-			MPI_Allreduce(&local_output, &global_output, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-		if(choice == 2)
-			MPI_Allreduce(&local_output, &global_output, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
-
-		// printf("Rank: %d, Global: %d\n", rank, global_output);
-		return global_output;
-	}
+	if(choice == 1)
+		MPI_Allreduce(&local_output, &global_output, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+	if(choice == 2)
+		MPI_Allreduce(&local_output, &global_output, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+	
+	// printf("Rank: %d, Global: %d\n", rank, global_output);											// For testing AllReduce indeed does the 'All' part and doesn't just do reduce	
+	return global_output;
 }
 
 
@@ -146,24 +138,23 @@ int main(int argc, char** argv) {
     int rank, p, i, global_output, time;
     struct timeval t1, t2;
 
-
     MPI_Init(NULL, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &p);
 
     assert(argc == 4);
 
-    int n = atoi(argv[1]);
+    int n = atoi(argv[1]);																				// Size of Array
     int func = atoi(argv[2]);																			// 1 for MyAllReduce, 2 for NaiveAllReduce, 3 for MPILibraryAllReduce
     int op = atoi(argv[3]);																				// 1 for add, 2 for max
 
     assert(n % p == 0);    
     assert(n > p);
 
-    int size = (int) n / p;
+    int size = (int) n / p;																				// Size of SubArray
 
     int *subArray = GenerateArray(size, rank);
-    
+
     gettimeofday(&t1, NULL);
 
     if (func == 1)
@@ -181,9 +172,9 @@ int main(int argc, char** argv) {
     if (rank == 0)
     	times = (int *)malloc(p * sizeof(int)); 
 
-    MPI_Gather(&time, 1, MPI_INT, times, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(&time, 1, MPI_INT, times, 1, MPI_INT, 0, MPI_COMM_WORLD);								// Collecting the largest of the times from across the processes
 
-    if (rank == 0){
+    if (rank == 0){																						// Output in Rank 0 only instead of all processes
     	int max = time;
     	for (i = 0; i < p - 1; i++){
     		if (times[i] > max)
@@ -204,12 +195,12 @@ int main(int argc, char** argv) {
 	    if (func == 3)
 	    	printf("Function: MPILibraryAllReduce\n");
 	    printf("Total runtime (in microseconds): %d\n", max);
-
+	    printf("Global Output: %d\n", global_output);
 	    free(times);
 	}
 
     free(subArray);
 
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Finalize();
+    return 0;
 }
