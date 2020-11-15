@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
 	printf("Precision (%% error): %lf\n", precision);
 	printf("Time (Milliseconds): %lf\n", runtime);
 
-	// printf("%ld,%d,%lf,%lf\n",n,p,precision,runtime);					// to collect results in a csv
+	// printf("%ld,%d,%lf,%lf,%.20lf\n",n,p,precision,runtime,pi);		// to collect results in a csv
 
 	return 0;
 }
