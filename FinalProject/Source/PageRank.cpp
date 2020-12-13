@@ -5,13 +5,36 @@ Reader PageRank::list = Reader();
 int PageRank::K = 1;
 int PageRank::rankings[1000000];
 float PageRank::D = 0.0;
-float PageRank::runtime = 0.0;
 
 
+void PageRank::displayTop5(Reader l, int top5[], int index[], double time) {
 
-void PageRank::rank(const char * filename, int k, float d) {
+	for(int i = 0; i < list.al.size(); i++) {
+        for(int j = 0; j < 5; j++) {
+            if(rankings[i] < top5[j])
+                break;
+            else {
+                if(j > 0) {
+                    top5[j - 1] = top5[j];
+                    index[j - 1] = index[j];
+                }
+                top5[j] = rankings[i];
+                index[j] = i;
+            }
+        }
+    }
+    std::cout << "Time taken: " << time << " Milliseconds" << std::endl; 
+    std::cout << "Rankings:" << std::endl;
+    for (int i=0; i < 5; i++) {
+        std::cout << "Rank: " << 5-i << ", Page Rank: " << top5[i] << ", Node ID: " << index[i] << std::endl;
+    }
+}
+
+
+void PageRank::rank(const char *filename, int k, float d) {
+    
+    int top5[5] = {0, 0, 0, 0, 0}, index[5] = {0, 0, 0, 0, 0};									// top5 stores the PageRanks, index stores the node
     std::fstream f;
-    int top5[5] = {0, 0, 0, 0, 0}, top_5_idx[5] = {0, 0, 0, 0, 0};
 
     f.open(filename);
 
@@ -19,55 +42,40 @@ void PageRank::rank(const char * filename, int k, float d) {
     K = k;
     D = d;
 
-    int i, j, node_cnt, next_node;
-    std::vector<int> curr_node;
+    int count, next;
+    std::vector<int> current;
     double random;
-    struct drand48_data r_buff;
+    struct drand48_data randomBuffer;
 
-    node_cnt = list.al.size();
-    memset(rankings, 0, 1000000);
-    srand48_r((int)time(0), &r_buff);
-    #pragma omp parallel for schedule(static) private(curr_node, next_node, r_buff, random)
-    for(i = 0; i < node_cnt; i++ ) {
-    	curr_node = list.adjacent(i);
-    	for(int j = 0; j < K; j++) {
-    		drand48_r(&r_buff, &random);
+    count = list.al.size();																		// total number of nodes in the graph
+    memset(rankings, 0, 1000000);																// all are ranked 0 at the beginning
+    srand48_r((int)time(0), &randomBuffer);
 
-    		if(curr_node.size() == 0 || random <= D) {
-                drand48_r(&r_buff, &random);
-                next_node = (int)(random * node_cnt);
+    double t1 = omp_get_wtime();
+    #pragma omp parallel for schedule(static) private(current, next, randomBuffer, random)
+    for(int i = 0; i < count; i++ ) {															// parallel random walks from each node
+    	current = list.adjacent(i);
+    	for(int j = 0; j < K; j++) {															// random walk of length K
+    		drand48_r(&randomBuffer, &random);
+
+    		if(current.size() == 0 || random <= D) {
+                drand48_r(&randomBuffer, &random);
+                next = (int)(random * count);													// Damping out to next node
             } else {
-                drand48_r(&r_buff, &random);
-                next_node = (int)(random * curr_node.size());
-                next_node = curr_node[next_node];
+                drand48_r(&randomBuffer, &random);
+                next = (int)(random * current.size());
+                next = current[next];															// Walking to a random neighbor of the current node
             }
 
             #pragma omp atomic
-            rankings[next_node]++;
+            rankings[next]++;																	// increase rank of 'next' by 1 (atomic)
 
-            curr_node = list.adjacent(next_node);
+            current = list.adjacent(next);														// set 'current' as 'next'
     	}
     }
+    double t2 = omp_get_wtime();
 
-    for(i = 0; i < list.al.size(); i++) {
-        for(j = 0; j < 5; j++) {
-            if(rankings[i] < top5[j])
-                break;
-            else {
-                if(j > 0) {
-                    top5[j - 1] = top5[j];
-                    top_5_idx[j - 1] = top_5_idx[j];
-                }
-                top5[j] = rankings[i];
-                top_5_idx[j] = i;
-            }
-        }
-    }
-
-    std::cout << "top5:" << std::endl;
-    for (i=0; i < 5; i++) {
-        std::cout << 5-i << ". value: " << top5[i] << " node: " << top_5_idx[i] << std::endl;
-    }
+    displayTop5(list, top5, index, (t2 - t1) * 1000);											// Display results
 
 }
 
