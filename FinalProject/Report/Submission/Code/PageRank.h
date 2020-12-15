@@ -10,7 +10,7 @@ class PageRank {
 
 	private:
 		static Reader list;																		// Adjacency List
-		static int rankings[1000000];															// List of node Ranks
+		static int rankings[1000000];															// List of node Ranks (increase if graph has more than 1M nodes)
 		static int K;																			// Walk Length
         static float D;																			// Damping Ratio
 
